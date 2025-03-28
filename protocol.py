@@ -10,7 +10,7 @@ import struct
 from typing import ClassVar, Final, Self
 
 HEADER_FORMAT = "<II"
-DO_WAIT_BETWEEN_REQUESTS: float = 0.05
+DO_WAIT_BETWEEN_REQUESTS: float = 0.075
 
 DO_XOR_RESPONSES: Final[bool] = False
 DO_USE_REQUEST_HEADERS: Final[bool] = False
