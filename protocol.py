@@ -41,9 +41,11 @@ class RconRequest:
             )
         }
         body_encoded = json.dumps(body).encode()
-        # header = struct.pack(HEADER_FORMAT, self.id, len(body_encoded))
-        # return header + body_encoded
-        return body_encoded
+        if DO_USE_REQUEST_HEADERS:
+            header = struct.pack(HEADER_FORMAT, self.id, len(body_encoded))
+            return header + body_encoded
+        else:
+            return body_encoded
     
     @classmethod
     def server_connect(cls):
