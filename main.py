@@ -21,12 +21,15 @@ def main():
         print_error("Missing parameter: Please specify a demo")
         return
     
-    module_name = sys.argv[1].removesuffix('.py')
+    demo_name = sys.argv[1].removesuffix('.py')
+    module_name = f"demos.{demo_name}"
     try:
-        module = importlib.import_module(f"demos.{module_name}")
-    except ModuleNotFoundError:
-        print_error("Unknown demo: %s" % module_name)
-        return
+        module = importlib.import_module(module_name)
+    except ModuleNotFoundError as e:
+        if e.name and e.name.startswith(module_name):
+            print_error("Unknown demo: %s" % demo_name)
+            return
+        raise
 
     if asyncio.iscoroutinefunction(module.main):
         asyncio.run(module.main())

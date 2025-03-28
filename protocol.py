@@ -12,6 +12,7 @@ from typing import ClassVar, Final, Self
 HEADER_FORMAT = "<II"
 DO_XOR_RESPONSES: Final[bool] = False
 DO_USE_REQUEST_HEADERS: Final[bool] = False
+DO_WAIT_BETWEEN_REQUESTS: float = 0.05
 
 class RconResponseStatus(IntEnum):
     OK = 200
@@ -87,14 +88,17 @@ class RconResponse:
 class HLLRconV2Protocol(asyncio.Protocol):
     def __init__(self, loop: asyncio.AbstractEventLoop, timeout: float | None = None):
         self._transport: asyncio.Transport | None = None
-        self._loop = loop
+        self._buffer: bytes = b""
 
         if DO_USE_REQUEST_HEADERS:
             self._waiters: dict[int, asyncio.Future[RconResponse]] = {}
         else:
             self._waiters: deque[asyncio.Future[RconResponse]] = deque()
+        
+        if DO_WAIT_BETWEEN_REQUESTS:
+            self._lock = asyncio.Lock()
 
-        self._buffer: bytes = b""
+        self.loop = loop
         self.timeout = timeout
         self.xorkey: bytes | None = None
         self.auth_token: str | None = None
@@ -223,20 +227,30 @@ class HLLRconV2Protocol(asyncio.Protocol):
         if not self._transport:
             raise Exception("Connection is closed")
 
-        # Send request
+        # Create request
         request = RconRequest(
             command=command,
             version=version,
             auth_token=self.auth_token,
             content_body=content_body,
         )
+
+        # Potentially wait before sending request, ensures there is a fixed-length
+        # delay between concurrent requests
+        if DO_WAIT_BETWEEN_REQUESTS > 0:
+            logging.debug("Request %s acquiring lock...", request.id)
+            await self._lock.acquire()
+            logging.debug("Request %s acquired lock!", request.id)
+            self.loop.call_later(DO_WAIT_BETWEEN_REQUESTS, lambda: self._lock.release())
+
+        # Send request
         packed = request.pack()
         message = self._xor(packed)
         logging.debug("Writing: %s", packed)
         self._transport.write(message)
 
         # Create waiter for response
-        waiter: asyncio.Future[RconResponse] = self._loop.create_future()
+        waiter: asyncio.Future[RconResponse] = self.loop.create_future()
         if DO_USE_REQUEST_HEADERS:
             self._waiters[request.id] = waiter
         else:
