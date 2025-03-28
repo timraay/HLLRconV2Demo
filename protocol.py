@@ -10,9 +10,11 @@ import struct
 from typing import ClassVar, Final, Self
 
 HEADER_FORMAT = "<II"
+DO_WAIT_BETWEEN_REQUESTS: float = 0.05
+
 DO_XOR_RESPONSES: Final[bool] = False
 DO_USE_REQUEST_HEADERS: Final[bool] = False
-DO_WAIT_BETWEEN_REQUESTS: float = 0.05
+DO_POP_V1_XORKEY: Final[bool] = True
 
 class RconResponseStatus(IntEnum):
     OK = 200
@@ -97,6 +99,9 @@ class HLLRconV2Protocol(asyncio.Protocol):
         
         if DO_WAIT_BETWEEN_REQUESTS:
             self._lock = asyncio.Lock()
+        
+        if DO_POP_V1_XORKEY:
+            self._seen_v1_xorkey: bool = False
 
         self.loop = loop
         self.timeout = timeout
@@ -127,10 +132,6 @@ class HLLRconV2Protocol(asyncio.Protocol):
 
         logging.info("Connected!")
 
-        # RCON V1 sends a XOR key upon connecting. Clear this from the buffer.
-        await asyncio.sleep(0.2)
-        protocol._buffer = b""
-
         await protocol.authenticate(password)
 
         return protocol
@@ -144,6 +145,15 @@ class HLLRconV2Protocol(asyncio.Protocol):
 
     def data_received(self, data: bytes):
         logging.debug("Incoming: (%s) %s", self._xor(data).count(b"\t"), data[:10])
+
+        if DO_POP_V1_XORKEY:
+            if not self._seen_v1_xorkey:
+                logging.info("Ignoring V1 XOR-key: %s", data[:4])
+                self._seen_v1_xorkey = True
+                data = data[4:]
+                if not data:
+                    return
+
         self._buffer += data
         self._read_from_buffer()
 
