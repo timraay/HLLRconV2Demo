@@ -21,7 +21,7 @@ def main():
         print_error("Missing parameter: Please specify a demo")
         return
     
-    module_name = sys.argv[1]
+    module_name = sys.argv[1].removesuffix('.py')
     try:
         module = importlib.import_module(f"demos.{module_name}")
     except ModuleNotFoundError:
