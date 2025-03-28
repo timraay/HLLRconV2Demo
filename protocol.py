@@ -46,24 +46,6 @@ class RconRequest:
             return header + body_encoded
         else:
             return body_encoded
-    
-    @classmethod
-    def server_connect(cls):
-        return cls(
-            command="ServerConnect",
-            version=2,
-            auth_token="",
-            content_body=""
-        )
-
-    @classmethod
-    def login(cls, password: str):
-        return cls(
-            command="Login",
-            version=2,
-            auth_token="",
-            content_body=password
-        )
 
 class RconResponse:
     def __init__(self, id: int, command: str, version: int, status_code: RconResponseStatus, status_message: str, content_body: str):
@@ -140,7 +122,9 @@ class HLLRconV2Protocol(asyncio.Protocol):
             raise Exception("The server refused connection over port %s" % port)
 
         logging.info("Connected!")
-        await asyncio.sleep(1)
+
+        # RCON V1 sends a XOR key upon connecting. Clear this from the buffer.
+        await asyncio.sleep(0.2)
         protocol._buffer = b""
 
         await protocol.authenticate(password)
@@ -178,7 +162,6 @@ class HLLRconV2Protocol(asyncio.Protocol):
             # Read packet data from buffer
             # decoded_body = self._xor(self._buffer[header_len:pkt_size], offset=header_len)
             decoded_body = self._xor(self._buffer[header_len:pkt_size])
-            # decoded_body = self._buffer[header_len:pkt_size]
             logging.debug("Unpacking: %s", decoded_body)
             pkt = RconResponse.unpack(pkt_id, decoded_body)
             self._buffer = self._buffer[pkt_size:]
@@ -287,7 +270,7 @@ class HLLRconV2Protocol(asyncio.Protocol):
 
         auth_token_resp = await self.execute("Login", 2, password)
         auth_token_resp.raise_for_status()
-        logging.info("Received auth token")
+        logging.info("Received auth token, successfully authenticated")
 
         self.auth_token = auth_token_resp.content_body
 
