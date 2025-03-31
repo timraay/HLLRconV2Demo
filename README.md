@@ -12,5 +12,8 @@ An implementation of the version 2 RCON protocol for Hell Let Loose, with exampl
 
 | Name | Description |
 |-|-|
-| `basic` | Basic example of how to use this protocol implementation.
+| `basic` | Basic example of how to use this implementation.
+| `protocol` | A lower-level version of the `basic` demo.
+| `stress` | A test that attempts to execute 1000 commands concurrently.
+| `reconnect` | Demonstration of the demo client's ability to automatically reconnect.
 | `minimap` | Opens a separate window showing the live position of a player on the map. Currently assumes the map is SME and only supports one player at a time.
