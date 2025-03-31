@@ -26,8 +26,7 @@ class HLLRconV2Protocol(asyncio.Protocol):
         else:
             self._queue: deque[asyncio.Future[RconResponse]] = deque()
         
-        if DO_WAIT_BETWEEN_REQUESTS:
-            self._lock = asyncio.Lock()
+        self._lock = asyncio.Lock()
         
         if DO_POP_V1_XORKEY:
             self._seen_v1_xorkey: bool = False
@@ -219,6 +218,8 @@ class HLLRconV2Protocol(asyncio.Protocol):
             await self._lock.acquire()
             self.logger.debug("Request %s acquired lock!", request.id)
             self.loop.call_later(DO_WAIT_BETWEEN_REQUESTS, lambda: self._lock.release())
+        else:
+            await self._lock.acquire()
 
         # Send request
         packed = request.pack()
@@ -241,6 +242,7 @@ class HLLRconV2Protocol(asyncio.Protocol):
         finally:
             # Cleanup waiter
             waiter.cancel()
+
             if DO_USE_REQUEST_HEADERS:
                 self._waiters.pop(request.id, None)
             else:
@@ -248,6 +250,9 @@ class HLLRconV2Protocol(asyncio.Protocol):
                     self._queue.remove(waiter)
                 except ValueError:
                     pass
+
+            if DO_WAIT_BETWEEN_REQUESTS <= 0:
+                self._lock.release()
 
     async def authenticate(self, password: str):
         self.logger.debug('Waiting to login...')
