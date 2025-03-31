@@ -208,8 +208,8 @@ class RconCommands:
                 "AdminName": admin_name,
             })
     
-    async def remove_temporary_ban(self, player_id: str):
-        await self.executor.execute("RemoveTemporaryBan", 2, {
+    async def remove_temp_ban(self, player_id: str):
+        await self.executor.execute("RemoveTempBan", 2, {
             "PlayerId": player_id,
         })
 
@@ -220,7 +220,7 @@ class RconCommands:
 
     async def remove_ban(self, player_id: str):
         await asyncio.gather(
-            self.remove_temporary_ban(player_id),
+            self.remove_temp_ban(player_id),
             self.remove_permanent_ban(player_id),
         )
 
