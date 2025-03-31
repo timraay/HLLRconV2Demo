@@ -19,20 +19,19 @@ class PlayerTeam(IntEnum):
     DAK = 4
     B8A = 5
 
-# TODO
 class PlayerRole(IntEnum):
     Rifleman = 0
-    # = 1
-    # = 2
-    # = 3
+    Assault = 1
+    AutomaticRifleman = 2
+    Medic = 3
     Spotter = 4
-    # = 5
-    # = 6
-    # = 7
-    # = 8
+    Support = 5
+    HeavyMachineGunner = 6
+    AntiTank = 7
+    Engineer = 8
     Officer = 9
-    # = 10
-    # = 11
+    Sniper = 10
+    Crewman = 11
     TankCommander = 12
     ArmyCommander = 13
 
@@ -45,7 +44,7 @@ class AdminLogResponse(TypedDict):
 
 
 class GetAllCommandsResponseEntry(TypedDict):
-    id: str
+    iD: str
     friendlyName: str
     isClientSupported: bool
 
