@@ -2,100 +2,29 @@ import array
 import asyncio
 import base64
 from collections import deque
-from enum import IntEnum
-import itertools
-import json
 import logging
 import struct
-from typing import ClassVar, Final, Self
+from typing import Any, Callable, Self
 
-HEADER_FORMAT = "<II"
-DO_WAIT_BETWEEN_REQUESTS: float = 0.075
-
-DO_XOR_RESPONSES: Final[bool] = False
-DO_USE_REQUEST_HEADERS: Final[bool] = False
-DO_POP_V1_XORKEY: Final[bool] = True
-
-class RconResponseStatus(IntEnum):
-    OK = 200
-    BAD_REQUEST = 400
-    UNAUTHORIZED = 401
-    INTERNAL_ERROR = 500
-
-class RconRequest:
-    __uid: ClassVar[itertools.count] = itertools.count(start=1)
-
-    def __init__(self, command: str, version: int, auth_token: str | None, content_body: dict | str = ""):
-        self.name = command
-        self.version = version
-        self.auth_token = auth_token
-        self.content_body = content_body
-        self.id = next(self.__uid)
-
-    def pack(self) -> bytes:
-        body = {
-            "authToken": self.auth_token or "",
-            "version": self.version,
-            "name": self.name,
-            "contentBody": (
-                self.content_body
-                if isinstance(self.content_body, str)
-                else json.dumps(self.content_body)
-            )
-        }
-        body_encoded = json.dumps(body).encode()
-        if DO_USE_REQUEST_HEADERS:
-            header = struct.pack(HEADER_FORMAT, self.id, len(body_encoded))
-            return header + body_encoded
-        else:
-            return body_encoded
-
-class RconResponse:
-    def __init__(self, id: int, command: str, version: int, status_code: RconResponseStatus, status_message: str, content_body: str):
-        self.id = id
-        self.name = command
-        self.version = version
-        self.status_code = status_code
-        self.status_message = status_message
-        self.content_body = content_body
-    
-    @property
-    def content_dict(self):
-        return json.loads(self.content_body)
-    
-    def __str__(self):
-        try:
-            content = self.content_dict
-        except json.JSONDecodeError:
-            content = self.content_body
-
-        return f"{self.status_code} {self.name} {content}"
-
-    @classmethod
-    def unpack(cls, id: int, body_encoded: bytes):
-        body = json.loads(body_encoded)
-        return cls(
-            id=id,
-            command=str(body["name"]),
-            version=int(body["version"]),
-            status_code=RconResponseStatus(int(body["statusCode"])),
-            status_message=str(body["statusMessage"]),
-            content_body=body["contentBody"],
-        )
-    
-    def raise_for_status(self):
-        if self.status_code != RconResponseStatus.OK:
-            raise Exception("RCON %s: %s" % (self.status_code, self.status_message))
+from lib.constants import DO_POP_V1_XORKEY, DO_WAIT_BETWEEN_REQUESTS, DO_USE_REQUEST_HEADERS, HEADER_FORMAT
+from lib.exceptions import HLLConnectionError, HLLConnectionLostError
+from lib.models import RconRequest, RconResponse
 
 class HLLRconV2Protocol(asyncio.Protocol):
-    def __init__(self, loop: asyncio.AbstractEventLoop, timeout: float | None = None):
+    def __init__(
+        self,
+        loop: asyncio.AbstractEventLoop,
+        timeout: float | None = None,
+        logger: logging.Logger = logging, # type: ignore
+        on_connection_lost: Callable[[Exception | None], Any] | None = None,
+    ):
         self._transport: asyncio.Transport | None = None
         self._buffer: bytes = b""
 
         if DO_USE_REQUEST_HEADERS:
             self._waiters: dict[int, asyncio.Future[RconResponse]] = {}
         else:
-            self._waiters: deque[asyncio.Future[RconResponse]] = deque()
+            self._queue: deque[asyncio.Future[RconResponse]] = deque()
         
         if DO_WAIT_BETWEEN_REQUESTS:
             self._lock = asyncio.Lock()
@@ -105,20 +34,29 @@ class HLLRconV2Protocol(asyncio.Protocol):
 
         self.loop = loop
         self.timeout = timeout
+        self.logger = logger
+        self.on_connection_lost = on_connection_lost
+
         self.xorkey: bytes | None = None
         self.auth_token: str | None = None
 
     @classmethod
-    async def connect(
+    async def _connect(
         cls,
         host: str,
         port: int,
-        password: str,
         timeout: float | None = 10,
-        loop: asyncio.AbstractEventLoop | None = None
-    ) -> Self:
+        loop: asyncio.AbstractEventLoop | None = None,
+        logger: logging.Logger = logging, # type: ignore
+        on_connection_lost: Callable[[Exception | None], Any] | None = None,
+    ):
         loop = loop or asyncio.get_event_loop()
-        protocol_factory = lambda: cls(loop=loop, timeout=timeout)
+        protocol_factory = lambda: cls(
+            loop=loop,
+            timeout=timeout,
+            logger=logger,
+            on_connection_lost=on_connection_lost,
+        )
 
         try:
             _, protocol = await asyncio.wait_for(
@@ -130,25 +68,48 @@ class HLLRconV2Protocol(asyncio.Protocol):
         except ConnectionRefusedError:
             raise Exception("The server refused connection over port %s" % port)
 
-        logging.info("Connected!")
-
-        await protocol.authenticate(password)
-
+        logger.info("Connected!")
         return protocol
+
+    @classmethod
+    async def connect(
+        cls,
+        host: str,
+        port: int,
+        password: str,
+        timeout: float | None = 10,
+        loop: asyncio.AbstractEventLoop | None = None,
+        logger: logging.Logger = logging, # type: ignore
+        on_connection_lost: Callable[[Exception | None], Any] | None = None,
+    ) -> Self:
+        protocol = await cls._connect(
+            host=host,
+            port=port,
+            timeout=timeout,
+            loop=loop,
+            logger=logger,
+            on_connection_lost=on_connection_lost,
+        )
+        await protocol.authenticate(password)
+        return protocol
+    
+    def disconnect(self):
+        if self._transport:
+            self._transport.close()
 
     def is_connected(self):
         return self._transport is not None
 
     def connection_made(self, transport):
-        logging.info('Connection made! Transport: %s', transport)
+        self.logger.info('Connection made! Transport: %s', transport)
         self._transport = transport # type: ignore
 
     def data_received(self, data: bytes):
-        logging.debug("Incoming: (%s) %s", self._xor(data).count(b"\t"), data[:10])
+        self.logger.debug("Incoming: (%s) %s", self._xor(data).count(b"\t"), data[:10])
 
         if DO_POP_V1_XORKEY:
             if not self._seen_v1_xorkey:
-                logging.info("Ignoring V1 XOR-key: %s", data[:4])
+                self.logger.info("Ignoring V1 XOR-key: %s", data[:4])
                 self._seen_v1_xorkey = True
                 data = data[4:]
                 if not data:
@@ -164,19 +125,19 @@ class HLLRconV2Protocol(asyncio.Protocol):
         # Read header
         header_len = struct.calcsize(HEADER_FORMAT)
         if len(self._buffer) < header_len:
-            logging.debug("Buffer too small (%s < %s)", len(self._buffer), header_len)
+            self.logger.debug("Buffer too small (%s < %s)", len(self._buffer), header_len)
             return
         # pkt_id, pkt_len = struct.unpack(HEADER_FORMAT, self._xor(self._buffer[:header_len]))
         pkt_id, pkt_len = struct.unpack(HEADER_FORMAT, self._buffer[:header_len])
         pkt_size = header_len + pkt_len
-        logging.debug("pkt_id = %s, pkt_len = %s", pkt_id, pkt_len)
+        self.logger.debug("pkt_id = %s, pkt_len = %s", pkt_id, pkt_len)
 
         # Check whether whole packet is on buffer
         if len(self._buffer) >= pkt_size:
             # Read packet data from buffer
             # decoded_body = self._xor(self._buffer[header_len:pkt_size], offset=header_len)
             decoded_body = self._xor(self._buffer[header_len:pkt_size])
-            logging.debug("Unpacking: %s", decoded_body)
+            self.logger.debug("Unpacking: %s", decoded_body)
             pkt = RconResponse.unpack(pkt_id, decoded_body)
             self._buffer = self._buffer[pkt_size:]
             
@@ -184,14 +145,14 @@ class HLLRconV2Protocol(asyncio.Protocol):
             if DO_USE_REQUEST_HEADERS:
                 waiter = self._waiters.pop(pkt_id, None)
                 if not waiter:
-                    logging.warning("No waiter for packet with ID %s", pkt_id)
+                    self.logger.warning("No waiter for packet with ID %s", pkt_id)
                 else:
                     waiter.set_result(pkt)
             else:
-                if not self._waiters:
-                    logging.warning("No waiter for packet with ID %s", pkt_id)
+                if not self._queue:
+                    self.logger.warning("No waiter for packet with ID %s", pkt_id)
                 else:
-                    waiter = self._waiters.popleft()
+                    waiter = self._queue.popleft()
                     waiter.set_result(pkt)
             
             # Repeat if buffer is not empty; Another complete packet might be on it
@@ -203,22 +164,28 @@ class HLLRconV2Protocol(asyncio.Protocol):
 
         if DO_USE_REQUEST_HEADERS:
             waiters = list(self._waiters.values())
+            self._waiters.clear()
         else:
-            waiters = list(self._waiters)
+            waiters = list(self._queue)
+            self._queue.clear()
 
         if exc:
-            logging.warning('Connection lost: %s', exc)
+            self.logger.warning('Connection lost: %s', exc)
             for waiter in waiters:
                 if not waiter.done():
-                    waiter.set_exception(exc)
-            self._waiters.clear()
-            raise Exception("Connection lost")
+                    waiter.set_exception(HLLConnectionLostError(str(exc)))
 
         else:
-            logging.info('Connection closed')
+            self.logger.info('Connection closed')
             for waiter in waiters:
                 waiter.cancel()
-            self._waiters.clear()
+
+        if self.on_connection_lost:
+            try:
+                self.on_connection_lost(exc)
+            except:
+                if self.logger:
+                    self.logger.exception("Failed to invoke on_connection_lost hook")
 
     def _xor(self, message: bytes, offset: int = 0) -> bytes:
         """Encrypt or decrypt a message using the XOR key provided by the game server"""
@@ -235,7 +202,7 @@ class HLLRconV2Protocol(asyncio.Protocol):
     
     async def execute(self, command: str, version: int, content_body: dict | str = "") -> RconResponse:
         if not self._transport:
-            raise Exception("Connection is closed")
+            raise HLLConnectionError("Connection is closed")
 
         # Create request
         request = RconRequest(
@@ -248,15 +215,15 @@ class HLLRconV2Protocol(asyncio.Protocol):
         # Potentially wait before sending request, ensures there is a fixed-length
         # delay between concurrent requests
         if DO_WAIT_BETWEEN_REQUESTS > 0:
-            logging.debug("Request %s acquiring lock...", request.id)
+            self.logger.debug("Request %s acquiring lock...", request.id)
             await self._lock.acquire()
-            logging.debug("Request %s acquired lock!", request.id)
+            self.logger.debug("Request %s acquired lock!", request.id)
             self.loop.call_later(DO_WAIT_BETWEEN_REQUESTS, lambda: self._lock.release())
 
         # Send request
         packed = request.pack()
         message = self._xor(packed)
-        logging.debug("Writing: %s", packed)
+        self.logger.debug("Writing: %s", packed)
         self._transport.write(message)
 
         # Create waiter for response
@@ -264,12 +231,12 @@ class HLLRconV2Protocol(asyncio.Protocol):
         if DO_USE_REQUEST_HEADERS:
             self._waiters[request.id] = waiter
         else:
-            self._waiters.append(waiter)
+            self._queue.append(waiter)
 
         try:
             # Wait for response
             response = await asyncio.wait_for(waiter, timeout=self.timeout)
-            logging.debug("Response: (%s) %s", response.name, response.content_body)
+            self.logger.debug("Response: (%s) %s", response.name, response.content_body)
             return response
         finally:
             # Cleanup waiter
@@ -278,23 +245,23 @@ class HLLRconV2Protocol(asyncio.Protocol):
                 self._waiters.pop(request.id, None)
             else:
                 try:
-                    self._waiters.remove(waiter)
+                    self._queue.remove(waiter)
                 except ValueError:
                     pass
 
     async def authenticate(self, password: str):
-        logging.debug('Waiting to login...')
+        self.logger.debug('Waiting to login...')
         
         xorkey_resp = await self.execute("ServerConnect", 2, "")
         xorkey_resp.raise_for_status()
-        logging.info("Received xorkey")
+        self.logger.info("Received xorkey")
 
         assert isinstance(xorkey_resp.content_body, str)
         self.xorkey = base64.b64decode(xorkey_resp.content_body)
 
         auth_token_resp = await self.execute("Login", 2, password)
         auth_token_resp.raise_for_status()
-        logging.info("Received auth token, successfully authenticated")
+        self.logger.info("Received auth token, successfully authenticated")
 
         self.auth_token = auth_token_resp.content_body
 

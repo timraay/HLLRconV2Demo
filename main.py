@@ -31,10 +31,13 @@ def main():
             return
         raise
 
-    if asyncio.iscoroutinefunction(module.main):
-        asyncio.run(module.main())
-    else:
-        module.main()
+    try:
+        if asyncio.iscoroutinefunction(module.main):
+            asyncio.run(module.main())
+        else:
+            module.main()
+    except KeyboardInterrupt:
+        pass
 
 if __name__ == '__main__':
     main()

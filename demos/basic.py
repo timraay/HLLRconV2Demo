@@ -1,33 +1,29 @@
 
 import asyncio
 
-from constants import RCON_HOST, RCON_PASSWORD, RCON_PORT
-from protocol import HLLRconV2Protocol
+from lib.client import RconClient
+from lib.constants import RCON_HOST, RCON_PASSWORD, RCON_PORT
 
 
 async def main():
-    protocol = await HLLRconV2Protocol.connect(
+    client = RconClient(
         host=RCON_HOST,
         port=RCON_PORT,
         password=RCON_PASSWORD,
     )
-
-    responses = await asyncio.gather(*[
-        protocol.execute(
-            command="ServerInformation",
-            version=2,
-            content_body=content_body,
+    
+    async with client:
+        responses = await asyncio.gather(
+            client.commands.get_server_config(),
+            client.commands.get_server_session(),
+            client.commands.get_map_rotation(),
+            client.commands.get_players()
         )
-        for content_body in [
-            {"Name": "players", "Value": ""},
-            {"Name": "session", "Value": ""},
-            {"Name": "serverconfig", "Value": ""},
-            {"Name": "maprotation", "Value": ""},
-        ]
-    ])
 
-    for resp in responses:
-        print(resp)
+        print()
+        for response in responses:
+            print(response)
+        print()
 
 if __name__ == '__main__':
     asyncio.run(main())

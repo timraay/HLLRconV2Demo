@@ -4,8 +4,9 @@ from PIL import Image, ImageTk
 import threading
 import tkinter as tk
 
-from constants import RCON_HOST, RCON_PASSWORD, RCON_PORT
-from protocol import HLLRconV2Protocol
+from lib.client import RconClient
+from lib.constants import RCON_HOST, RCON_PASSWORD, RCON_PORT
+from lib.exceptions import HLLError
 
 TACMAP_PATH = Path("assets/tacmap.png")
 
@@ -75,23 +76,29 @@ class RconThread(threading.Thread):
         asyncio.run(self.main())
 
     async def main(self):
-        rcon = await HLLRconV2Protocol.connect(
+        rcon = RconClient(
             host=RCON_HOST,
             port=RCON_PORT,
             password=RCON_PASSWORD,
         )
+        rcon.start()
+        await rcon.wait_until_connected(timeout=10)
 
         while True:
-            resp = await rcon.execute("ServerInformation", 2, { "Name": "players", "Value": "" })
-            players = resp.content_dict["players"]
-            if players:
-                world_origin = (-100000, -100000)
-                world_size = (200000, 200000)
-                pos = players[0]["worldPosition"]
-                self.minimap.set_position(
-                    (pos["x"] - world_origin[0]) / world_size[0],
-                    (pos["y"] - world_origin[1]) / world_size[1],
-                )
+            try:
+                resp = await rcon.commands.get_players()
+            except (HLLError, asyncio.TimeoutError):
+                pass
+            else:
+                players = resp["players"]
+                if players:
+                    world_origin = (-100000, -100000)
+                    world_size = (200000, 200000)
+                    pos = players[0]["worldPosition"]
+                    self.minimap.set_position(
+                        (pos["x"] - world_origin[0]) / world_size[0],
+                        (pos["y"] - world_origin[1]) / world_size[1],
+                    )
 
 def main():
     root = tk.Tk()
