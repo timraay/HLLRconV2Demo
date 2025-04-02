@@ -5,7 +5,7 @@ from typing import AsyncIterator
 
 from lib.commands import RconCommands
 from lib.exceptions import HLLConnectionError, HLLError
-from lib.executor import RconExecutor
+from lib.abc import RconClient
 from lib.protocol import HLLRconV2Protocol
 from lib.utils import safe_create_task
 
@@ -13,7 +13,7 @@ BACKOFF_MIN = 0.5
 BACKOFF_MAX = 30.0
 BACKOFF_FACTOR = 1.618
 
-class RconClient(RconExecutor):
+class Rcon(RconClient):
     def __init__(
         self,
         host: str,
@@ -44,9 +44,9 @@ class RconClient(RconExecutor):
     def is_connected(self):
         return self._sock.done() and not self._sock.cancelled() and not self._sock.exception()
 
-    async def wait_until_connected(self, timeout: float | None = None):
+    async def wait_until_connected(self, timeout: float | None = None) -> None:
         try:
-            return await asyncio.wait_for(asyncio.shield(self._sock), timeout=timeout)
+            await asyncio.wait_for(asyncio.shield(self._sock), timeout=timeout)
         except asyncio.CancelledError:
             raise HLLConnectionError("Connection is closed")
 
@@ -113,7 +113,7 @@ class RconClient(RconExecutor):
         except:
             protocol.disconnect()
             raise
-    
+
     async def __aexit__(self, exc_type, exc, tb):
         if self.is_connected():
             protocol = self._sock.result()
@@ -168,7 +168,8 @@ class RconClient(RconExecutor):
                 raise e
 
     async def execute(self, command: str, version: int, body: str | dict = "") -> str:
-        sock = await self.wait_until_connected(timeout=5)
-        response = await sock.execute(command=command, version=version, content_body=body)
+        await self.wait_until_connected(timeout=5)
+        protocol = self._sock.result()
+        response = await protocol.execute(command=command, version=version, content_body=body)
         response.raise_for_status()
         return response.content_body

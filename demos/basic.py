@@ -1,12 +1,12 @@
 
 import asyncio
 
-from lib.client import RconClient
+from lib.rcon import Rcon
 from lib.constants import RCON_HOST, RCON_PASSWORD, RCON_PORT
 
 
 async def main():
-    client = RconClient(
+    client = Rcon(
         host=RCON_HOST,
         port=RCON_PORT,
         password=RCON_PASSWORD,

@@ -4,7 +4,7 @@ from PIL import Image, ImageTk
 import threading
 import tkinter as tk
 
-from lib.client import RconClient
+from lib.rcon import Rcon
 from lib.constants import RCON_HOST, RCON_PASSWORD, RCON_PORT
 from lib.exceptions import HLLError
 
@@ -76,7 +76,7 @@ class RconThread(threading.Thread):
         asyncio.run(self.main())
 
     async def main(self):
-        rcon = RconClient(
+        rcon = Rcon(
             host=RCON_HOST,
             port=RCON_PORT,
             password=RCON_PASSWORD,

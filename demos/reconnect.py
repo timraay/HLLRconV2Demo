@@ -2,13 +2,13 @@ import asyncio
 from datetime import datetime
 import logging
 
-from lib.client import RconClient
+from lib.rcon import Rcon
 from lib.constants import RCON_HOST, RCON_PASSWORD, RCON_PORT
 from lib.exceptions import HLLError
 
 
 async def main():
-    rcon = RconClient(
+    rcon = Rcon(
         host=RCON_HOST,
         port=RCON_PORT,
         password=RCON_PASSWORD,

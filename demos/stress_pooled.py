@@ -2,24 +2,30 @@
 import asyncio
 import time
 
-from lib.rcon import Rcon
+from lib.pooled_rcon import PooledRcon
 from lib.constants import RCON_HOST, RCON_PASSWORD, RCON_PORT
 
 
 async def main():
-    rcon = Rcon(
+    rcon = PooledRcon(
         host=RCON_HOST,
         port=RCON_PORT,
         password=RCON_PASSWORD,
+        pool_size=10
     )
 
-    async with rcon:
-        start_time = time.monotonic()
-        responses = await asyncio.gather(*[
-            rcon.commands.get_server_session()
-            for _ in range(1000)
-        ], return_exceptions=True)
-        end_time = time.monotonic()
+    rcon.start()
+    await rcon.wait_until_connected(timeout=10)
+
+    start_time = time.monotonic()
+    responses = await asyncio.gather(*[
+        rcon.commands.get_server_session()
+        for _ in range(1000)
+    ], return_exceptions=True)
+    end_time = time.monotonic()
+
+    rcon.stop()
+    await asyncio.sleep(0.1)
 
     print()
     print("Failed iterations:", ", ".join([
