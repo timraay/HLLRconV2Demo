@@ -4,6 +4,8 @@ from typing import Literal, TypeAlias, TypedDict
 # TODO
 class PlayerPlatform(StrEnum):
     STEAM = "steam"
+    EPIC = "epic"
+    XBOX = "xbl"
 
 # TODO
 class SupportedPlatform(StrEnum):
