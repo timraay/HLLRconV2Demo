@@ -18,3 +18,15 @@ An implementation of the version 2 RCON protocol for Hell Let Loose, with exampl
 | `stress_pooled` | The same test as `stress` but using a pool of 10 connections.
 | `reconnect` | Demonstration of the demo client's ability to automatically reconnect.
 | `minimap` | Opens a separate window showing the live position of a player on the map. Currently assumes the map is SME and only supports one player at a time.
+| `capture_position_data` | Start polling player positions on the server and save it to a CSV file.
+| `heatmap` | Generate a heatmap from a player positions CSV. Requires 2 extra parameters: The name of the map as seen in `/assets/tacmaps/`, and the name of the CSV file as seen in `/data/positions/`.
+| `heatmap_gif` | The same as `heatmap` but generates a GIF that shows player movements over time.
+| `heatmap_section` | The same as `heatmap` but has some extra (currently hardcoded) to zoom in on a specific section of the map.
+
+## Polling player positions on multiple servers at once
+
+To connect to multiple servers at once and start polling them for player positions, you can do the following:
+
+1. Open `capture_data.py` in a text editor.
+2. Update `args` with as many servers as desired, then save.
+3. Run `python capture_data.py`.

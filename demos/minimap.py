@@ -8,7 +8,7 @@ from lib.rcon import Rcon
 from lib.constants import RCON_HOST, RCON_PASSWORD, RCON_PORT
 from lib.exceptions import HLLError
 
-TACMAP_PATH = Path("assets/tacmap.png")
+TACMAP_PATH = Path("assets/tacmaps/tobruk.png")
 
 def get_oval_coords(x: float, y: float) -> tuple[float, float, float, float]:
     radius = 7

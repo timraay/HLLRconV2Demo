@@ -18,8 +18,6 @@ def cast_response_to_dict(dict_type: type[DictT]) -> Callable[
         @wraps(func)
         async def wrapper(*args: P.args, **kwargs: P.kwargs):
             result = await func(*args, **kwargs)
-            with open('debug.txt', 'w+') as f:
-                f.write(result)
             return json.loads(result)
         return wrapper
     return decorator
