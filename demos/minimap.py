@@ -5,7 +5,7 @@ import threading
 import tkinter as tk
 
 from lib.rcon import Rcon
-from lib.constants import RCON_HOST, RCON_PASSWORD, RCON_PORT
+from lib.constants import RCON_HOST, RCON_PASSWORD, RCON_PORT, validate_env
 from lib.exceptions import HLLError
 
 TACMAP_PATH = Path("assets/tacmaps/tobruk.png")
@@ -101,6 +101,7 @@ class RconThread(threading.Thread):
                     )
 
 def main():
+    validate_env()
     root = tk.Tk()
     tacmap = Minimap(root)
     tacmap.pack(fill="both", expand=True)

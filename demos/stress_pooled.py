@@ -1,12 +1,12 @@
-
 import asyncio
 import time
 
+from lib.constants import RCON_HOST, RCON_PASSWORD, RCON_PORT, validate_env
 from lib.pooled_rcon import PooledRcon
-from lib.constants import RCON_HOST, RCON_PASSWORD, RCON_PORT
 
 
 async def main():
+    validate_env()
     rcon = PooledRcon(
         host=RCON_HOST,
         port=RCON_PORT,
@@ -33,6 +33,7 @@ async def main():
     ]) or "None")
     print(f"Took: {end_time - start_time:.3f} seconds")
     print()
+
 
 if __name__ == '__main__':
     asyncio.run(main())

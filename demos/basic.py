@@ -2,10 +2,11 @@
 import asyncio
 
 from lib.rcon import Rcon
-from lib.constants import RCON_HOST, RCON_PASSWORD, RCON_PORT
+from lib.constants import RCON_HOST, RCON_PASSWORD, RCON_PORT, validate_env
 
 
 async def main():
+    validate_env()
     client = Rcon(
         host=RCON_HOST,
         port=RCON_PORT,

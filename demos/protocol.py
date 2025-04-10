@@ -1,11 +1,12 @@
 
 import asyncio
 
-from lib.constants import RCON_HOST, RCON_PASSWORD, RCON_PORT
+from lib.constants import RCON_HOST, RCON_PASSWORD, RCON_PORT, validate_env
 from lib.protocol import HLLRconV2Protocol
 
 
 async def main():
+    validate_env()
     protocol = await HLLRconV2Protocol.connect(
         host=RCON_HOST,
         port=RCON_PORT,
